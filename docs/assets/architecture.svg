@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="570" viewBox="0 0 1120 570">
+<style>text{font-family:Inter,Arial,sans-serif;fill:#1f2937}.title{font-weight:700;font-size:28px}.label{font-size:15px}.small{font-size:12px;fill:#64748b}.axis{stroke:#94a3b8;stroke-width:1}.grid{stroke:#d7dee8;stroke-width:1}.box{stroke:#334155;stroke-width:1.2;rx:8}.arrow{stroke:#334155;stroke-width:2;fill:none;marker-end:url(#arrow)}</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/></marker></defs>
+<text x="550.0" y="55.0" class="title" text-anchor="middle">AURORA asynchronous dual-rate control graph</text>
+<rect x="70.0" y="160.0" width="130.0" height="94.0" rx="7" fill="#ffffff" stroke="#2563eb" class="box"/>
+<text x="135.0" y="192.0" class="label" text-anchor="middle">Cameras</text>
+<text x="135.0" y="211.0" class="small" text-anchor="middle">RGB-D + wrist</text>
+<rect x="235.0" y="160.0" width="130.0" height="94.0" rx="7" fill="#ffffff" stroke="#0f766e" class="box"/>
+<text x="300.0" y="192.0" class="label" text-anchor="middle">Occupancy</text>
+<text x="300.0" y="211.0" class="small" text-anchor="middle">TSDF + slots</text>
+<rect x="410.0" y="160.0" width="130.0" height="94.0" rx="7" fill="#ffffff" stroke="#7c3aed" class="box"/>
+<text x="475.0" y="192.0" class="label" text-anchor="middle">System 2</text>
+<text x="475.0" y="211.0" class="small" text-anchor="middle">7B semantic planner</text>
+<text x="475.0" y="230.0" class="small" text-anchor="middle">5-10 Hz</text>
+<rect x="610.0" y="160.0" width="130.0" height="94.0" rx="7" fill="#ffffff" stroke="#d97706" class="box"/>
+<text x="675.0" y="192.0" class="label" text-anchor="middle">Intent Ring</text>
+<text x="675.0" y="211.0" class="small" text-anchor="middle">CRC + TTL</text>
+<rect x="775.0" y="160.0" width="130.0" height="94.0" rx="7" fill="#ffffff" stroke="#16a34a" class="box"/>
+<text x="840.0" y="192.0" class="label" text-anchor="middle">System 1</text>
+<text x="840.0" y="211.0" class="small" text-anchor="middle">88M reactive ctrl</text>
+<text x="840.0" y="230.0" class="small" text-anchor="middle">125 Hz</text>
+<rect x="945.0" y="160.0" width="130.0" height="94.0" rx="7" fill="#ffffff" stroke="#dc2626" class="box"/>
+<text x="1010.0" y="192.0" class="label" text-anchor="middle">Safety Critic</text>
+<text x="1010.0" y="211.0" class="small" text-anchor="middle">hard veto</text>
+<rect x="945.0" y="340.0" width="130.0" height="94.0" rx="7" fill="#ffffff" stroke="#ea580c" class="box"/>
+<text x="1010.0" y="372.0" class="label" text-anchor="middle">Actuators</text>
+<text x="1010.0" y="391.0" class="small" text-anchor="middle">base arm gripper</text>
+<rect x="430.0" y="380.0" width="130.0" height="94.0" rx="7" fill="#ffffff" stroke="#64748b" class="box"/>
+<text x="495.0" y="412.0" class="label" text-anchor="middle">Peer Robot</text>
+<text x="495.0" y="431.0" class="small" text-anchor="middle">state + intent</text>
+<path d="M200,207 L235,207" class="arrow"/>
+<path d="M365,207 L410,207" class="arrow"/>
+<path d="M540,207 L610,207" class="arrow"/>
+<path d="M740,207 L775,207" class="arrow"/>
+<path d="M905,207 L945,207" class="arrow"/>
+<path d="M1010,254 L1010,340" class="arrow"/>
+<path d="M495,380 L495,254" class="arrow"/>
+<path d="M560,425 L775,238" class="arrow"/>
+<text x="565.0" y="510.0" class="label" text-anchor="middle">Slow semantics publish compact, time-bounded intent; fast control never blocks on VLA inference.</text>
+</svg>

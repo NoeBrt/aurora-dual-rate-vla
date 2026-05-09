@@ -1,0 +1,31 @@
+runtime:
+  mode: async_dual_rate
+  transport: shm_udp_hybrid
+  thermal_cap_w: 55
+
+planner:
+  planner_rate_hz: 7.5
+  model: aurora-sem-7b-lora
+  quantization: int4_awq_fp16_heads
+  full_caption_rate_hz: 1.25
+  latent_ttl_ms: 420
+  replan_uncertainty_threshold: 0.38
+  replan_force_residual_threshold_n: 18.0
+
+controller:
+  control_rate_hz: 125
+  model: aurora-rx-88m
+  precision: fp16
+  chunk_horizon: 8
+  execute_stride: 2
+  cuda_graph: true
+  actuator_delay_ms: 24
+  stale_intent_fallback_ms: 420
+
+safety:
+  peer_exclusion_radius_m: 0.42
+  wrist_force_soft_lateral_n: 36
+  wrist_force_soft_axial_n: 52
+  wrist_force_hard_n: 80
+  veto_on_unknown_peer_gripper: true
+  camera_sync_max_uncertainty_ms: 18

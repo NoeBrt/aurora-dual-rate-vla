@@ -1,0 +1,37 @@
+scene:
+  layouts: 38
+  rubble_density: [0.05, 0.32]
+  narrow_passage_prob: 0.42
+  drawer_misalignment_mm: [-8.0, 12.0]
+
+objects:
+  mass_scale: [0.45, 2.4]
+  com_offset_m: [-0.018, 0.018]
+  friction_static: [0.35, 1.55]
+  friction_dynamic: [0.22, 1.10]
+  rare_tool_oversample:
+    screwdriver: 3.0
+    adjustable_wrench: 2.4
+    flashlight: 2.1
+    prybar: 1.8
+
+drawer:
+  rail_static_friction: [14.0, 42.0]
+  rail_dynamic_friction: [8.0, 31.0]
+  breakaway_force_n: [18.0, 55.0]
+  side_load_jam_threshold_n: [22.0, 48.0]
+
+sensors:
+  camera_time_offset_ms:
+    head_rgb: [-4, 4]
+    wrist_rgb: [-18, 18]
+    wrist_depth: [-22, 22]
+  depth_noise:
+    dropout_prob: [0.01, 0.18]
+    black_plastic_multiplier: [1.0, 3.4]
+
+actuation:
+  arm_delay_ms: [14, 34]
+  base_delay_ms: [36, 82]
+  gripper_offset_m: [-0.009, 0.009]
+  gripper_pad_compliance_mm_per_n: [0.02, 0.11]

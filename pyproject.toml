@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aurora-dual-rate-vla"
+version = "0.1.0"
+description = "Reference implementation of asynchronous dual-rate VLA control for collaborative mobile manipulators."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "AURORA Project Team"}]
+dependencies = []
+
+[project.scripts]
+aurora-demo = "aurora.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

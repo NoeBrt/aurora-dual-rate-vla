@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620">
+<style>text{font-family:Inter,Arial,sans-serif;fill:#1f2937}.title{font-weight:700;font-size:28px}.label{font-size:15px}.small{font-size:12px;fill:#64748b}.axis{stroke:#94a3b8;stroke-width:1}.grid{stroke:#d7dee8;stroke-width:1}.box{stroke:#334155;stroke-width:1.2;rx:8}.arrow{stroke:#334155;stroke-width:2;fill:none;marker-end:url(#arrow)}</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/></marker></defs>
+<text x="550.0" y="45.0" class="title" text-anchor="middle">Architecture ablation: asynchronous split matters</text>
+<line x1="95" y1="500.0" x2="1065" y2="500.0" class="grid"/>
+<text x="81.0" y="504.0" class="small" text-anchor="end">0</text>
+<line x1="95" y1="417.2" x2="1065" y2="417.2" class="grid"/>
+<text x="81.0" y="421.2" class="small" text-anchor="end">0.14</text>
+<line x1="95" y1="334.4" x2="1065" y2="334.4" class="grid"/>
+<text x="81.0" y="338.4" class="small" text-anchor="end">0.28</text>
+<line x1="95" y1="251.6" x2="1065" y2="251.6" class="grid"/>
+<text x="81.0" y="255.6" class="small" text-anchor="end">0.42</text>
+<line x1="95" y1="168.8" x2="1065" y2="168.8" class="grid"/>
+<text x="81.0" y="172.8" class="small" text-anchor="end">0.56</text>
+<line x1="95" y1="86.0" x2="1065" y2="86.0" class="grid"/>
+<text x="81.0" y="90.0" class="small" text-anchor="end">0.7</text>
+<line x1="95" y1="86" x2="95" y2="500" class="axis"/>
+<line x1="95" y1="500" x2="1065" y2="500" class="axis"/>
+<text x="216.2" y="528.0" class="small" text-anchor="middle">Monolithic VLA</text>
+<rect x="168.2" y="316.7" width="39.4" height="183.3" rx="7" fill="#16a34a" stroke="none"/>
+<text x="187.9" y="310.7" class="small" text-anchor="middle">0.31</text>
+<rect x="216.2" y="393.5" width="39.4" height="106.5" rx="7" fill="#dc2626" stroke="none"/>
+<text x="235.9" y="387.5" class="small" text-anchor="middle">0.18</text>
+<text x="458.8" y="528.0" class="small" text-anchor="middle">VLA+Impedance</text>
+<rect x="410.8" y="251.6" width="39.4" height="248.4" rx="7" fill="#16a34a" stroke="none"/>
+<text x="430.4" y="245.6" class="small" text-anchor="middle">0.42</text>
+<rect x="458.8" y="446.8" width="39.4" height="53.2" rx="7" fill="#dc2626" stroke="none"/>
+<text x="478.4" y="440.8" class="small" text-anchor="middle">0.09</text>
+<text x="701.2" y="528.0" class="small" text-anchor="middle">No Residual</text>
+<rect x="653.2" y="192.5" width="39.4" height="307.5" rx="7" fill="#16a34a" stroke="none"/>
+<text x="672.9" y="186.5" class="small" text-anchor="middle">0.52</text>
+<rect x="701.2" y="434.9" width="39.4" height="65.1" rx="7" fill="#dc2626" stroke="none"/>
+<text x="720.9" y="428.9" class="small" text-anchor="middle">0.11</text>
+<text x="943.8" y="528.0" class="small" text-anchor="middle">Final</text>
+<rect x="895.8" y="145.1" width="39.4" height="354.9" rx="7" fill="#16a34a" stroke="none"/>
+<text x="915.4" y="139.1" class="small" text-anchor="middle">0.6</text>
+<rect x="943.8" y="434.9" width="39.4" height="65.1" rx="7" fill="#dc2626" stroke="none"/>
+<text x="963.4" y="428.9" class="small" text-anchor="middle">0.11</text>
+<rect x="95.0" y="572.0" width="18.0" height="18.0" rx="7" fill="#16a34a" stroke="none"/>
+<text x="120.0" y="586.0" class="small" text-anchor="start">Success</text>
+<rect x="260.0" y="572.0" width="18.0" height="18.0" rx="7" fill="#dc2626" stroke="none"/>
+<text x="285.0" y="586.0" class="small" text-anchor="start">Collision</text>
+</svg>

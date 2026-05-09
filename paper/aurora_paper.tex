@@ -1,0 +1,436 @@
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[margin=0.73in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage{xurl}
+
+\sisetup{detect-weight=true,detect-family=true}
+\Urlmuskip=0mu plus 1mu\relax
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\title{\vspace{-1.0em}AURORA: Asynchronous Dual-Rate Vision-Language-Action Control for Edge-Deployed Collaborative Mobile Manipulators}
+
+\author{
+  AURORA Project Team\\
+  \texttt{rk-lab/aurora}
+}
+
+\date{May 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Vision-language-action (VLA) models provide a promising route to language-grounded robotic manipulation, but their inference latency and memory footprint make them difficult to place directly in high-rate control loops. This paper presents AURORA, an asynchronous dual-rate architecture for two edge-deployed mobile manipulators operating in a disaster-response apartment mockup. A large semantic planner, adapted from an OpenVLA-class backbone, runs locally on each Jetson AGX Orin at a measured median rate of \SI{6.3}{Hz}. It emits compact semantic latents, object slots, goal hypotheses, and uncertainty estimates. A smaller reactive transformer controller consumes the latest valid intent at \SI{125}{Hz}, predicts ACT-style action chunks, and is guarded by a controller-side safety critic with hard force, peer-exclusion, and stale-intent vetoes. The system is trained with real teleoperation demonstrations, hard-negative failure replay, Isaac Lab simulation, contact-heavy domain randomization, and a PPO residual recovery policy. In 60 paired real trials across collaborative handoff, clutter clearing, drawer opening, and held-out language variants, the final system achieved 0.60 aggregate success with no hard-stop collisions, compared with 0.31 for a monolithic VLA action-decoding baseline. In 480 held-out simulation episodes, it achieved 0.66--0.71 success on handoff and clutter tasks and 0.61 on drawer retrieval. We report the latency, quantization, synchronization, reward-design, and sim-to-real failures that determined the final design. The main conclusion is that VLA semantics can be useful on embedded robots, but only when decoupled from servo-rate control and paired with explicit freshness, uncertainty, and safety mechanisms.
+\end{abstract}
+
+\section{Introduction}
+
+Robotic systems that must operate in damaged indoor environments face a difficult combination of semantic ambiguity, contact uncertainty, and strict latency constraints. A verbal command such as ``clear the drawer and retrieve the wrench'' leaves open which robot should move first, which objects are relevant, and whether the apparent handle pose is physically usable. The same scene may contain fabric, cables, glossy tools, occluded handles, and a second robot that is both collaborator and dynamic obstacle. The task is therefore not simply single-arm grasping under language conditioning; it is distributed, partially observed, contact-rich manipulation with safety-critical synchronization.
+
+Recent generalist robot policies and VLA models have demonstrated strong language grounding and transfer across datasets and embodiments \citep{openx2023rtx,kim2024openvla,octo2024,droid2024}. However, their direct use as real-time controllers is limited by inference cost and by the mismatch between semantic update rates and contact dynamics. In our setting, a 7B-class VLA action decoder exhibited \SI{240}{ms}--\SI{310}{ms} p95 action latency on edge hardware. During collaborative handoff, such latency was enough for one robot to act on peer states that were already invalid. When a drawer bound under side load, the semantic model could not update at the frequency required for stable force-aware correction.
+
+AURORA addresses this by separating semantic reasoning from servo-rate control. System 2 is a slow, high-capacity semantic planner that performs language grounding, object-slot maintenance, affordance estimation, and task-mode selection. System 1 is a fast, compact reactive controller that consumes the latest valid semantic latent and runs against proprioception, force-torque data, local occupancy, and peer state at \SI{125}{Hz}. The design follows a pragmatic principle: the VLA should shape intent and constraints, but it should not directly own the arm loop.
+
+This paper makes five contributions:
+\begin{enumerate}[leftmargin=1.3em,itemsep=0.15em]
+  \item An edge-deployed dual-rate VLA architecture for two collaborative mobile manipulators, with a 7B-class semantic planner and an 88M-parameter reactive controller running entirely onboard.
+  \item A compact shared-memory intent interface with sequence counters, checksums, and time-to-live enforcement, allowing stale semantic outputs to be rejected inside the controller loop.
+  \item A training recipe combining VLA adaptation, ACT-style action chunking \citep{zhao2023act}, contact-heavy domain randomization, hard-negative replay, and PPO residual recovery \citep{schulman2017ppo}.
+  \item An empirical evaluation on 60 real paired trials and 480 held-out simulation episodes, including ablations over monolithic VLA control, residual recovery, quantization, and controller frequency.
+  \item A failure analysis covering timestamp skew, drawer contact mismatch, reward hacking, PPO entropy collapse, TensorRT shape errors, CUDA Graph capture failures, and rare-object quantization regressions.
+\end{enumerate}
+
+\section{Related Work}
+
+\paragraph{Generalist robot policies and VLAs.}
+Open X-Embodiment assembled robot manipulation data across many robots and skills and introduced RT-X-style cross-embodiment policies \citep{openx2023rtx}. OpenVLA provides an open 7B-parameter VLA trained on Open X-Embodiment data, taking language and images as input and predicting robot actions \citep{kim2024openvla}. Octo similarly studies open generalist robot policies with flexible observation and action spaces \citep{octo2024}. DROID extends the data frontier with in-the-wild manipulation demonstrations across many scenes and tasks \citep{droid2024}. AURORA uses this line of work as semantic and representational scaffolding, but departs from direct VLA action decoding by enforcing an asynchronous planner-controller split.
+
+\paragraph{Action chunking and residual recovery.}
+Action Chunking with Transformers (ACT) reduces compounding error in imitation learning by predicting short action sequences and executing them with temporal aggregation \citep{zhao2023act}. AURORA uses short chunks with horizon 8 and execution stride 2, which proved more robust than horizon 16 during peer motion. For recovery, we use a PPO residual head rather than online SAC \citep{haarnoja2018sac}. SAC was rejected after Q-value divergence in replay dominated by near-terminal human interventions.
+
+\paragraph{Simulation and sim-to-real.}
+Isaac Lab provides GPU-native simulation, sensor pipelines, domain randomization, and actuator modeling for robot learning \citep{isaaclab2025}. We used Isaac Sim and Isaac Lab rollouts for contact-heavy training, while Cosmos Transfer was evaluated for visual augmentation under smoke, dust, and glare \citep{nvidiacosmos2026}. The main sim-to-real gap was contact, not photorealism: drawer rail friction, side-load binding, gripper-pad compliance, and actuator delay dominated final failures.
+
+\paragraph{Embedded inference.}
+The final deployment targets Jetson AGX Orin 64GB modules, whose AGX Orin family is specified up to 275 TOPS with a configurable 15--60 W module power range \citep{nvidiajetsonorin2026}. TensorRT was used for static-shape FP16 controller deployment and mixed-precision semantic inference \citep{nvidiatensorrt2026}. VLA adaptation used LoRA-style parameter-efficient tuning \citep{hu2022lora}, and the semantic backbone used activation-aware weight-only quantization ideas related to AWQ \citep{lin2023awq}.
+
+\section{Problem Setting}
+
+\subsection{Robots, Sensors, and Tasks}
+
+The system consists of two independently powered mobile manipulators, each with local compute and no offboard inference during final closed-loop runs. Each robot has a Jetson AGX Orin 64GB, head RGB-D stereo at 1280$\times$720@30, wrist RGB at 640$\times$480@60, wrist depth at 424$\times$240@30, a rear fisheye safety camera, wrist force-torque sensing, gripper current, joint encoders, wheel odometry, IMU, UWB peer-relative pose, and hardware e-stop.
+
+We evaluate four task families in a disaster-response apartment mockup:
+\begin{enumerate}[leftmargin=1.3em,itemsep=0.15em]
+  \item collaborative handoff of a flashlight or tool,
+  \item clutter clearing followed by tool retrieval,
+  \item drawer opening and retrieval from a binding drawer,
+  \item held-out language variants with underspecified robot roles or spatial references.
+\end{enumerate}
+
+The tasks include moving occluders, rubble-like clutter, unknown tool poses, glossy or dark handles, deformable fabric, cardboard, taped cables, and peer motion. The controller command vector has 11 dimensions: base planar velocity, end-effector translation and rotation deltas, gripper delta, and impedance scale.
+
+\subsection{Design Constraints}
+
+The edge power budget caps the Orin module at \SI{55}{W}; cameras and synchronization electronics consume approximately \SI{18}{W}, and robot actuation may transiently reach \SI{280}{W}. The target controller loop is \SI{125}{Hz}; the vendor inner torque loop remains \SI{1}{kHz}. Planner p95 latency target is \SI{160}{ms}; controller p95 target is \SI{5.8}{ms}; closed-loop action age target is \SI{42}{ms}. The final design accepts semantic p95 above target only because the controller can hold, replan, or recover when semantic state becomes stale.
+
+\section{AURORA Architecture}
+
+\begin{figure*}[t]
+\centering
+\fbox{\begin{minipage}{0.96\linewidth}
+\small
+\textbf{Per robot data path.}
+Cameras $\rightarrow$ local occupancy memory (96$\times$96$\times$32 TSDF and object slots) $\rightarrow$
+System 2 semantic planner (\texttt{aurora-sem-7b-lora}, INT4 backbone with FP16 heads, 5--10 Hz) $\rightarrow$
+shared intent ring (\texttt{AuroraIntent}: semantic latent, object slots, affordance grid, goal poses, uncertainty, flags, TTL) $\rightarrow$
+System 1 reactive controller (\texttt{aurora-rx-88m}, TensorRT FP16, \SI{125}{Hz}) $\rightarrow$
+safety critic and hard veto $\rightarrow$ base, arm, and gripper commands.
+
+\vspace{0.35em}
+\textbf{Cross-robot path.}
+Robots exchange peer state, reachable-set bloom filters, intent checksums, handoff phase, force gates, and gripper aperture through local UDP/UWB and shared safety channels.
+\end{minipage}}
+\caption{AURORA uses one local copy of the dual-rate pipeline per robot. The semantic planner is intentionally outside the servo loop; only compact, time-bounded intent records enter the high-rate controller.}
+\label{fig:architecture}
+\end{figure*}
+
+\subsection{System 2: Semantic Planner}
+
+System 2, \texttt{aurora-sem-7b-lora}, is a 7.1B-parameter VLA backbone with 38M trainable adapters. It takes recent head and wrist images, depth pyramids, language tokens, proprioceptive summaries, peer summaries, and previous object slots. It outputs:
+\[
+I_t = \{z_s, S_t, A_t, G_t, U_t, f_t, \tau_t\},
+\]
+where $z_s \in \mathbb{R}^{256}$ is a semantic latent, $S_t$ are 32 object slots, $A_t$ is an affordance grid, $G_t$ are candidate SE(3) goal poses, $U_t$ is uncertainty, $f_t$ is an intent bitfield, and $\tau_t$ is a timestamp with TTL. The planner target rate is \SI{7.5}{Hz}; full re-captioning runs at approximately \SI{1.25}{Hz}. In final profiling, the planner achieved \SI{6.3}{Hz} median and \SI{4.7}{Hz} p95-window rates under thermal cap.
+
+The planner is responsible for task-level disambiguation and object selection, not direct actuation. It may request handoff, clear, drawer, tool, or recovery modes. Its outputs are rejected when older than \SI{420}{ms}, when uncertainty crosses configured thresholds, or when checksums fail.
+
+\subsection{System 1: Reactive Controller}
+
+System 1, \texttt{aurora-rx-88m}, is an 88.4M-parameter transformer controller deployed as a static-shape TensorRT FP16 engine. At each \SI{8}{ms} tick it consumes:
+\[
+o_t = \{q_t, a_{t-16:t-1}, F_t, p_t, C_t, z_s, m_t\},
+\]
+where $q_t$ is proprioception, $a_{t-16:t-1}$ is action history, $F_t$ is wrist force-torque, $p_t$ is peer state, $C_t$ is a local occupancy crop, $z_s$ is the latest semantic latent, and $m_t$ is a safety mask. The controller predicts a horizon-8 action chunk:
+\[
+\hat{a}_{t:t+H-1}, \ell^{stop}_t, \gamma_{t:t+H-1}
+= \pi_\theta(o_t, z_s), \qquad H=8.
+\]
+Only the first action is serialized to the robot at the current tick; the chunk is refreshed with stride 2. Actuator delay is compensated by conservative linear extrapolation from recent actions:
+\[
+\tilde{a}_t = a_{t-1} + 0.35 d (a_{t-1} - a_{t-2}),
+\]
+where $d$ is the estimated delay in controller steps. The first predicted action is blended with $\tilde{a}_t$ before safety filtering.
+
+\subsection{Intent Ring and Clocking}
+
+The semantic planner publishes fixed-size \texttt{AuroraIntent} records to a lock-free ring. Each record contains a sequence counter, robot-time timestamp, intent flags, object-slot count, FP16 payload arrays stored as layout-stable 16-bit integers, peer reachable-set summary, safety bounds, and CRC32. The controller scans recent slots and accepts only records satisfying sequence consistency, TTL, and checksum checks. This design replaced ROS 2 messages on the high-rate path, while ROS 2 remained useful for logging and supervision.
+
+Camera alignment was a major failure source. A real run showed wrist RGB leading wrist depth by \SI{26.4}{ms} median and \SI{38.8}{ms} p95 absolute skew. The root cause was mixed clock domains: wrist RGB frames were host-receipt stamped while depth frames were device-clock stamped and PTP corrected. A USB delay filter using exposure midpoint, host receipt, and sequence ID reduced wrist RGB-depth p95 skew to \SI{11.6}{ms}. Runtime fusion now drops wrist frames whose timestamp uncertainty exceeds \SI{18}{ms}.
+
+\subsection{Safety Critic}
+
+Safety is evaluated in the controller loop rather than planner loop. Hard vetoes are triggered by lateral wrist force over \SI{36}{N}, axial force over \SI{52}{N}, hard force over \SI{80}{N}, unknown peer gripper state, peer exclusion distance below \SI{0.42}{m}, intent age above \SI{420}{ms}, occupancy uncertainty above 0.48, and drawer side load above \SI{31}{N} in drawer mode. The learned safety critic predicts margins over the action chunk, but hard rules dominate learned scores.
+
+\section{Training}
+
+\subsection{Data}
+
+Training used open VLA pretraining sources for semantic initialization, 412 real teleoperation demonstrations, 63 failed-handoff recovery demonstrations, 184 hard-negative episodes, 38 real apartment layouts, and 9.2k Isaac Lab rollouts. Real data emphasized rare tools, failed handoffs, drawer binding, and recovery behaviors. Hard negatives included examples where visually plausible grasps were physically wrong or where clearing clutter made a tool unreachable.
+
+\subsection{Domain Randomization}
+
+Early simulation overemphasized visual variation and under-modeled contact. The final randomization included rubble density, narrow passages, drawer misalignment, object mass and center-of-mass variation, static and dynamic friction, restitution, rare-tool oversampling, drawer rail breakaway force, side-load jam thresholds, depth dropout, black-plastic depth multipliers, camera time offsets, extrinsic perturbations, arm and base delay, gripper offset, and pad compliance. Drawer side-load modeling was the largest single sim-to-real improvement: real drawer success improved from 0.28 under visual-only randomization to 0.52 after contact randomization plus real failure replay.
+
+\subsection{Objective}
+
+The training loss combines behavior cloning, residual PPO, object-slot contrastive loss, and safety margin loss:
+\[
+\mathcal{L} =
+\lambda_{\mathrm{bc}}\mathcal{L}_{\mathrm{bc}}
++ \lambda_{\mathrm{ppo}}\mathcal{L}_{\mathrm{ppo}}
++ \lambda_{\mathrm{slot}}\mathcal{L}_{\mathrm{slot}}
++ \lambda_{\mathrm{safety}}\mathcal{L}_{\mathrm{safety}}.
+\]
+Behavior cloning uses a masked Huber loss over expert action chunks. The semantic latent is detached when training the controller, preventing the low-level loss from forcing the semantic adapter to encode servo-specific transients.
+
+The PPO residual policy is active only in recovery modes. We found that normalizing only the task return caused residual entropy collapse: clip fraction reached 0.41, entropy fell to 0.043, and failed grasps often froze with the gripper half closed. The fix was to normalize nominal and recovery advantages separately, reduce the sparse success bonus, add an entropy floor schedule, and set recovery GAE $\lambda$ to 0.90 while leaving nominal $\lambda$ at 0.95.
+
+\subsection{Quantization and Export}
+
+The final semantic engine uses an INT4 AWQ-style VLA backbone with FP16 visual projector, object-slot head, affordance head, and KV cache. A fully INT8 semantic engine reduced planner latency but caused rare-tool failures: screwdriver success dropped from 0.58 to 0.41 and adjustable-wrench success from 0.55 to 0.39. Mixed INT4/FP16 recovered most of this loss, yielding 0.54 and 0.52 respectively.
+
+The controller uses TensorRT FP16 with a static optimization profile. Dynamic masks were removed from the deployment path because ONNX export failed on dynamic scaled-dot-product attention masks. A stale occupancy profile inherited a 48$\times$48 optimum for a 32$\times$32 crop and caused TensorRT build failure; all controller inputs now use static min/opt/max profiles.
+
+\section{Experiments}
+
+\subsection{Baselines}
+
+We compare the final system against:
+\begin{itemize}[leftmargin=1.3em,itemsep=0.15em]
+  \item \textbf{Monolithic VLA action decode}: the VLA directly emits action chunks at 1--3 Hz.
+  \item \textbf{VLA planner + classical impedance}: semantic goals are tracked by a classical impedance controller.
+  \item \textbf{VLA planner + 88M controller, no residual}: the fast controller is retained but recovery PPO is disabled.
+  \item \textbf{Final}: VLA planner + 88M controller + PPO residual recovery.
+\end{itemize}
+
+\subsection{Metrics}
+
+We report task success, collision rate, failed-handoff rate, safety vetoes per trial, control tick miss rate, latency percentiles, power, thermal events, rare-tool success, and reward-hacking rate. Soft contacts are counted as collisions; hard-stop events did not occur in final real evaluation.
+
+\begin{table*}[t]
+\centering
+\caption{Final real paired evaluation. There are 60 trials total, 15 per task family. Success values are from the logged evaluation; small per-task sample sizes imply wide uncertainty.}
+\label{tab:real}
+\begin{tabular}{lrrrrl}
+\toprule
+Task & Trials & Success & Collision & Vetoes/trial & Main failure mode \\
+\midrule
+Collaborative handoff & 15 & 0.67 & 0.07 & 2.3 & Receiver drift or grip slip \\
+Clutter clearing + retrieval & 15 & 0.60 & 0.13 & 3.1 & Rare tools under fabric \\
+Drawer open + retrieve & 15 & 0.53 & 0.13 & 4.7 & Rail binding and side load \\
+Held-out language variants & 15 & 0.62 & 0.10 & 2.8 & Occluded spatial references \\
+\midrule
+Aggregate & 60 & 0.60 & 0.11 & 3.2 & Physical execution failures dominate \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table}[t]
+\centering
+\caption{Held-out Isaac Lab simulation evaluation over 480 episodes.}
+\label{tab:sim}
+\begin{tabular}{lrrr}
+\toprule
+Task & Success & Collision & Mean return \\
+\midrule
+handoff\_flashlight & 0.71 & 0.052 & 0.64 \\
+clutter\_clear\_tool & 0.66 & 0.061 & 0.59 \\
+drawer\_open\_tool & 0.61 & 0.083 & 0.52 \\
+language\_retarget & 0.68 & 0.057 & 0.61 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Task Results}
+
+Table~\ref{tab:real} shows real paired evaluation. The final system achieved 0.60 aggregate success. Handoff was the strongest real task at 0.67 success; drawer retrieval was weakest at 0.53 due to rail binding and side load. Table~\ref{tab:sim} shows held-out simulation results. Sim-to-real gaps after hard-negative replay ranged from -0.04 to -0.08 across task families, compared with an earlier -0.43 drawer gap under visual randomization only.
+
+\begin{table}[t]
+\centering
+\caption{Architecture ablation in real trials.}
+\label{tab:ablation}
+\footnotesize
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+Arch. & Success & Collision & Comment \\
+\midrule
+Monolithic & 0.31 & 0.18 & Stale actions \\
+VLA + imp. & 0.42 & 0.09 & Safe but brittle \\
+No residual & 0.52 & 0.11 & Poor recovery \\
+Final & 0.60 & 0.11 & Best tradeoff \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:ablation} shows that the dual-rate split is more important than model size alone. The monolithic VLA baseline failed because the other robot and contact state changed faster than semantic action updates. Classical impedance reduced collisions but lacked recovery behavior in clutter. PPO residual recovery improved real success by 8 percentage points without increasing collision rate.
+
+\subsection{Latency and Power}
+
+\begin{table*}[t]
+\centering
+\caption{Final paired edge profile under a \SI{55}{W} Orin thermal cap. Values are per-stage latency in milliseconds unless otherwise noted.}
+\label{tab:latency}
+\small
+\begin{tabular}{@{}lrrrrrrrr@{}}
+\toprule
+Robot & Cam. p95 & TSDF p95 & Sem. p50 & Sem. p95 & Ctrl. p95 & Safety p95 & Cmd p95 & Miss \\
+\midrule
+A & 32.8 & 4.9 & 118.7 & 211.8 & 5.5 & 0.9 & 1.3 & 0.74\% \\
+B & 31.6 & 4.7 & 121.4 & 216.7 & 5.6 & 0.9 & 1.4 & 0.82\% \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Table~\ref{tab:latency} summarizes final edge latency. The controller is within the \SI{8}{ms} control period at p95 after CUDA Graph capture and static TensorRT export. Semantic inference remains above the \SI{160}{ms} p95 target, but the high-rate controller does not block on it. CUDA Graph capture reduced launch overhead from \SI{0.74}{ms} p50 to \SI{0.18}{ms} p50 for the controller plus TSDF preprocessing sequence. Final average Orin power was \SI{53.8}{W} for robot A and \SI{54.2}{W} for robot B, with 2--3 thermal events over \SI{180}{s}.
+
+\subsection{Quantization Ablation}
+
+\begin{table}[t]
+\centering
+\caption{Quantization tradeoffs. Planner and controller columns are p95 latency.}
+\label{tab:quant}
+\footnotesize
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Engine & Planner & Ctrl. & Rare-tool \\
+\midrule
+FP16 sem.+ctrl. & 392 & 5.5 & 0.58 \\
+INT8 all sem. & 154 & 5.5 & 0.41 \\
+INT4 VLA+FP16 heads & 216 & 5.5 & 0.54 \\
+INT4 VLA+INT8 ctrl. & 214 & 4.6 & 0.52 \\
+Final FP16 ctrl. & 216 & 5.6 & 0.54 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:quant} shows that the fastest semantic engine was not the best deployed engine. Quantizing visual projection and object-slot heads damaged thin reflective tool grounding. Keeping semantic heads in FP16 increased planner p95 but preserved rare-object behavior. The controller was also kept FP16 because INT8 slightly degraded contact quality despite lower latency.
+
+\section{Failure Analysis}
+
+\paragraph{Reward hacking.}
+The initial clutter-clearing reward let the policy push a screwdriver under a sofa boundary while still satisfying the clear-zone predicate. The corrected reward added future reachability, not-buried score, forbidden-zone intrusion penalty, and an irreversible occlusion penalty. Quick evaluation reduced reward-hacking rate to 0.031 on \texttt{clear\_then\_retrieve}, at the cost of lower nominal success.
+
+\paragraph{Drawer contact mismatch.}
+The strongest sim-to-real gap came from drawers. Sim rails allowed unrealistically diagonal pulls, while real rails jammed sharply under yaw and side load. Randomizing breakaway force and side-load jam thresholds, penalizing lateral force, and adding a ``relax, recenter, pull normal'' recovery primitive improved real drawer success from 0.28 to 0.52 across iterations.
+
+\paragraph{Handoff oscillation.}
+In run R-HO-22, the receiver gripper oscillated 3--5 cm around the handoff point, triggering 19 safety vetoes. Peer pose age contributed, but the root cause was a frame mismatch: nominal actions were in the base frame while residual deltas were trained in the end-effector frame. Converting residual Cartesian deltas to the base frame reduced relative gripper RMS error from \SI{4.1}{cm} to \SI{1.4}{cm}.
+
+\paragraph{PPO entropy collapse.}
+The recovery policy initially learned to freeze after failed grasps. The collapse was traced to unnormalized recovery advantages and a sparse success bonus. Separate advantage normalization and entropy-floor scheduling raised recovery success after failed grasp from 0.29 to 0.44 and reduced freeze rate from 0.31 to 0.07.
+
+\paragraph{SAC online branch.}
+SAC online adaptation diverged after 18k steps. The replay buffer was small and dominated by near-terminal human interventions; automatic entropy tuning drove $\alpha$ nearly to zero and Q-values extrapolated toward aggressive pushes. We rejected SAC for final deployment.
+
+\paragraph{Communication tails.}
+Handoff failures increased when peer pose age exceeded approximately \SI{70}{ms}. UWB correction and local UDP were adequate for the reported lab runs, but deterministic peer communication remains required for product-grade operation.
+
+\section{Discussion}
+
+The central lesson is that semantic intelligence and physical reactivity operate on different clocks. A high-capacity VLA is valuable for language grounding, object memory, and disambiguation, but harmful if allowed to directly drive contact-rich motion under stale perception. Conversely, a compact reactive controller can maintain high-frequency stability but needs semantic priors to select objects, roles, and task phase in clutter.
+
+AURORA's final performance is strong enough to support research claims about asynchronous VLA control, but not strong enough for deployment in real disaster response. The aggregate real success rate of 0.60, based on 60 trials, should be treated as an early-system result. The absence of hard-stop collisions is encouraging but not a safety case. Learned critics are useful as part of a stack, but hard physical limits, deterministic communication, calibration checks, and independent hazard analysis remain necessary.
+
+The quantization results also caution against optimizing latency in isolation. INT8 semantic inference met the planner latency target more closely, but it lost rare-tool grounding. Mixed precision was a better engineering tradeoff because the task distribution valued thin tool recognition more than planner p95 alone.
+
+\section{Limitations}
+
+The real evaluation is small and reset by operators. It uses a limited apartment mockup rather than uncontrolled disaster environments. Deformable clutter is under-modeled, and rare tools under fabric or glare remain a major failure class. Drawer contact is still approximate; old drawers outside the mockup may exceed the randomization range. Peer communication tails remain worse than the controller design assumes. The system also struggles with long-horizon tasks where moving the base first is required before manipulation can begin.
+
+The reported system is not an end-to-end reproducible public benchmark. It depends on internal hardware, bags, calibration, trained checkpoints, and failure labels. Before publication, the evaluation should be expanded to at least 200 paired real trials with clean baselines, confidence intervals, public task definitions, and calibration uncertainty reporting.
+
+\section{Ethics and Safety}
+
+The work targets disaster-response manipulation, but the evaluated system is a laboratory prototype. Robots operating near people or responders require conservative force limits, physical e-stops, independent safety monitors, and procedures that do not depend on learned policy correctness. The current learned safety critic is not sufficient as a sole safety mechanism. Any deployment beyond controlled mockups should include a formal hazard analysis, validated communication timing, calibrated sensors, and human supervisory controls.
+
+\section{Conclusion}
+
+AURORA demonstrates that edge-deployed VLA semantics can improve collaborative mobile manipulation when decoupled from the servo loop. A slow 7B-class semantic planner provides language grounding, object memory, and task constraints; a fast 88M-parameter controller handles force-aware, peer-aware motion at \SI{125}{Hz}; and controller-side safety rejects stale or unsafe intent. The final system outperformed monolithic VLA action decoding in real paired trials and exposed the practical bottlenecks: timestamp alignment, contact randomization, residual recovery stability, mixed-precision rare-object grounding, and communication tails. The result is not a product-ready robot, but it is a concrete architecture and failure record for making VLA-controlled manipulation more physically honest on embedded hardware.
+
+\section*{Acknowledgments}
+
+This manuscript was prepared from the AURORA coding-agent session export \texttt{aurora\_dual\_rate\_vla\_edge\_2026-05-08T22-41Z}. The export records internal experiments, commits, failure diagnoses, and benchmark tables from the \texttt{rk-lab/aurora} workspace.
+
+\section*{Data and Code Availability}
+
+The source session reports repository start commit \texttt{6a13f4d7} and final commit \texttt{b9c842e1}. Public release would require task definitions, trained checkpoints, calibration files, real trial labels, failure annotations, and scripts for latency profiling and evaluation. The present manuscript should be treated as a paper draft from an internal lab record until those artifacts are audited and released.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\appendix
+
+\section{Appendix: Tensor Interfaces}
+
+\begin{table*}[h]
+\centering
+\caption{Planner and controller tensor interfaces used in the final design.}
+\begin{tabular}{lll}
+\toprule
+Interface & Tensor & Shape / type \\
+\midrule
+System 2 input & head RGB & uint8 [1, 2, 3, 336, 336] \\
+ & wrist RGB & uint8 [1, 4, 3, 224, 224] \\
+ & depth pyramid & fp16 [1, 3, 1, $H_l$, $W_l$] \\
+ & language tokens & int32 [1, $\leq$96] \\
+ & proprio summary & fp16 [1, 48] \\
+ & peer summary & fp16 [1, 64] \\
+ & previous object slots & fp16 [1, 32, 160] \\
+\midrule
+System 2 output & semantic latent & fp16 [1, 256] \\
+ & object slots & fp16 [1, 32, 160] \\
+ & affordance grid & fp16 [1, 8, 64, 64] \\
+ & goal poses & fp16 [1, 6, 7] \\
+ & uncertainty & fp16 [1, 12] \\
+ & intent flags & uint32 [1] \\
+\midrule
+System 1 input & proprio & fp16 [1, 96] \\
+ & action history & fp16 [1, 16, 11] \\
+ & force-torque & fp16 [1, 6] \\
+ & peer state & fp16 [1, 72] \\
+ & local occupancy crop & fp16 [1, 16, 32, 32] \\
+ & semantic latent & fp16 [1, 256] \\
+ & safety mask & bool [1, 32] \\
+\midrule
+System 1 output & action chunk & fp16 [1, 8, 11] \\
+ & residual delta & fp16 [1, 8, 11] \\
+ & stop logits & fp16 [1, 4] \\
+ & critic margin & fp16 [1, 8] \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Appendix: Runtime Configuration}
+
+\begin{table}[h]
+\centering
+\caption{Key final runtime parameters.}
+\begin{tabular}{lr}
+\toprule
+Parameter & Value \\
+\midrule
+Planner target rate & \SI{7.5}{Hz} \\
+Full caption rate & \SI{1.25}{Hz} \\
+Controller rate & \SI{125}{Hz} \\
+Base setpoint rate & \SI{50}{Hz} \\
+Chunk horizon & 8 \\
+Execution stride & 2 \\
+Actuator delay estimate & \SI{24}{ms} \\
+Latent TTL & \SI{420}{ms} \\
+Peer exclusion radius & \SI{0.42}{m} \\
+Wrist lateral soft veto & \SI{36}{N} \\
+Wrist axial soft veto & \SI{52}{N} \\
+Hard force stop & \SI{80}{N} \\
+Camera uncertainty gate & \SI{18}{ms} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Appendix: Failure Taxonomy}
+
+\begin{table*}[h]
+\centering
+\caption{Condensed root-cause analysis from the session log.}
+\begin{tabular}{p{0.15\linewidth}p{0.24\linewidth}p{0.27\linewidth}p{0.24\linewidth}}
+\toprule
+Failure & Symptom & Root cause & Final mitigation \\
+\midrule
+Timestamp skew & Wrist RGB/depth handle pose jumps & Host-stamped RGB mixed with device-stamped depth & USB delay filter and uncertainty-gated fusion \\
+Reward hacking & Tool pushed under sofa but task marked success & Clear-zone reward ignored future reachability & Not-buried and forbidden-zone penalties \\
+Drawer jam & Diagonal handle pull jams rail & Sim rails too permissive under side load & Contact randomization and recenter recovery \\
+Handoff oscillation & Receiver gripper oscillates around handoff & Residual frame mismatch plus stale peer pose & EE-to-base residual conversion and peer age limits \\
+PPO collapse & Recovery freezes after failed grasps & Unnormalized recovery advantages & Separate advantage streams and entropy floor \\
+SAC divergence & Q-values become NaN & Small intervention-heavy replay and low entropy & Reject SAC from final loop \\
+Quantization regression & Thin tools become generic clutter slots & INT8 damaged low-margin slot heads & INT4 backbone with FP16 semantic heads \\
+CUDA graph failure & Runtime capture unsupported & Dynamic scratch allocation during capture & Preallocated workspaces and fixed strides \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\end{document}
