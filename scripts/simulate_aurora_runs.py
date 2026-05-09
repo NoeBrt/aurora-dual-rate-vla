@@ -18,6 +18,9 @@ def main() -> int:
     parser.add_argument("--output-dir", default="docs/sim_runs")
     parser.add_argument("--frames", type=int, default=14)
     parser.add_argument("--seed", type=int, default=145)
+    parser.add_argument("--style", choices=["cinematic", "technical"], default="cinematic")
+    parser.add_argument("--width", type=int, default=1440)
+    parser.add_argument("--height", type=int, default=900)
     args = parser.parse_args()
 
     manifest = simulate_run(
@@ -27,6 +30,9 @@ def main() -> int:
             output_dir=Path(args.output_dir),
             frames=args.frames,
             seed=args.seed,
+            width=args.width,
+            height=args.height,
+            render_style=args.style,
         )
     )
     run_dir = Path(args.output_dir) / str(manifest["run_id"])

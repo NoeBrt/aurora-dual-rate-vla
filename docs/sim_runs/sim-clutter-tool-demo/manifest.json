@@ -2,8 +2,9 @@
   "run_id": "sim-clutter-tool-demo",
   "task": "clutter_tool",
   "task_label": "Clutter clearing + tool retrieval",
-  "created_at": "2026-05-09T17:39:47.274993+00:00",
+  "created_at": "2026-05-09T17:44:57.823215+00:00",
   "seed": 154,
+  "render_style": "cinematic",
   "frames": [
     {
       "file": "frames/frame_0001.svg",

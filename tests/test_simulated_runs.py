@@ -20,6 +20,7 @@ class SimulatedRunsTest(unittest.TestCase):
             run_dir = Path(tmp) / "sim-drawer-demo"
 
             self.assertEqual(manifest["task"], "drawer_tool")
+            self.assertEqual(manifest["render_style"], "cinematic")
             self.assertEqual(len(manifest["frames"]), 4)
             self.assertTrue((run_dir / "manifest.json").exists())
             self.assertTrue((run_dir / "contact_sheet.svg").exists())
