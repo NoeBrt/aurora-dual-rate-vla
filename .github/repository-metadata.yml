@@ -1,0 +1,13 @@
+description: "Reference implementation of AURORA: asynchronous dual-rate VLA control for edge collaborative mobile manipulators."
+homepage: "https://github.com/NoeBrt/aurora-dual-rate-vla#readme"
+topics:
+  - robotics
+  - vision-language-action
+  - vla
+  - mobile-manipulation
+  - edge-ai
+  - jetson-orin
+  - sim-to-real
+  - reinforcement-learning
+  - robot-learning
+  - tensorrt
